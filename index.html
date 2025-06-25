@@ -44,7 +44,7 @@
                                 </div>
                                 <div class="col-md-4">
                                     <label for="taxaJurosAnual" class="form-label">Taxa de juros anual (%)</label>
-                                    <input type="number" class="form-control" id="taxaJurosAnual" step="0.01" readonly>
+                                    <input type="number" class="form-control readonly-field" id="taxaJurosAnual" step="0.01" readonly>
                                 </div>
                             </div>
                             <div class="row mb-3">
@@ -112,6 +112,36 @@
             return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
 
+        function calculateInterestRate(principal, numPayments, paymentAmount) {
+            let low = 0;
+            let high = 1; // 100% monthly
+            let interestRate = 0.5;
+            const tolerance = 0.000001;
+            const maxIterations = 200;
+
+            for (let i = 0; i < maxIterations; i++) {
+                if (interestRate === 0) {
+                    interestRate = 0.000001; // Avoid division by zero
+                }
+                
+                let calculatedPayment = principal * interestRate / (1 - Math.pow(1 + interestRate, -numPayments));
+                
+                if (Math.abs(calculatedPayment - paymentAmount) < tolerance) {
+                    return interestRate;
+                }
+
+                if (calculatedPayment > paymentAmount) {
+                    high = interestRate;
+                } else {
+                    low = interestRate;
+                }
+
+                interestRate = (low + high) / 2;
+            }
+
+            return null; // Return null if no rate is found within tolerance and iterations
+        }
+
         function calcular() {
             const valorTotal = parseMoney(document.getElementById('valorTotal').value);
             const valorEntrada = parseMoney(document.getElementById('valorEntrada').value);
@@ -123,81 +153,71 @@
             const valorFinanciado = valorTotal - valorEntrada;
             document.getElementById('valorFinanciado').value = formatMoney(valorFinanciado);
 
-            // Taxa de juros em decimal
-            let i = taxaJuros / 100;
+            let i = taxaJuros / 100; // Monthly interest rate as decimal
 
-            // Verificar qual campo está vazio e calculá-lo
             let prestacaoFinal = valorPrestacao;
 
-            if (valorPrestacaoInput && valorPrestacao > 0 && numMeses > 0 && valorFinanciado > 0) {
-                // Se valor da prestação está preenchido, calcular taxa de juros mensal
-                let low = 0;
-                let high = 1; // Max 100% monthly
-                let iterations = 0;
-                const maxIterations = 1000;
-                const tolerance = 0.000001;
-
-                while (iterations < maxIterations) {
-                    i = (low + high) / 2;
-                    if (i === 0) { // Avoid division by zero if i becomes 0
-                        low = i;
-                        continue;
-                    }
-                    const pvFactor = (1 - Math.pow(1 + i, -numMeses)) / i;
-                    const calculatedPrestacao = valorFinanciado / pvFactor;
-
-                    if (Math.abs(calculatedPrestacao - valorPrestacao) < tolerance) {
-                        taxaJuros = i * 100;
-                        document.getElementById('taxaJuros').value = taxaJuros.toFixed(2);
-                        break;
-                    }
-
-                    if (calculatedPrestacao < valorPrestacao) {
-                        high = i;
-                    } else {
-                        low = i;
-                    }
-                    iterations++;
-                }
-
-                if (iterations === maxIterations) {
-                    alert('Não foi possível encontrar uma taxa de juros mensal precisa para os valores informados.');
-                }
-                prestacaoFinal = valorPrestacao; // Use the provided prestacao
-            }
-            else if (!valorPrestacaoInput && numMeses && taxaJuros) {
-                // Calcular prestação: PMT = PV * (i * (1 + i)^n) / ((1 + i)^n - 1)
+            // Clear previous results
+            document.getElementById('taxaJuros').value = '';
+            document.getElementById('taxaJurosAnual').value = '';
+            document.getElementById('valorPrestacao').value = '';
+            document.getElementById('valorTotalFinanciamento').value = '';
+            document.getElementById('valorTotalComEntrada').value = '';
+            document.getElementById('valorTotalJuros').value = '';
+            
+            // --- CALCULATION LOGIC ---
+            
+            // Case 1: Calculate monthly payment (prestacao)
+            if (valorFinanciado > 0 && numMeses > 0 && taxaJuros > 0) {
+                // PMT = PV * (i * (1 + i)^n) / ((1 + i)^n - 1)
                 prestacaoFinal = valorFinanciado * (i * Math.pow(1 + i, numMeses)) / (Math.pow(1 + i, numMeses) - 1);
                 document.getElementById('valorPrestacao').value = formatMoney(prestacaoFinal);
             }
-            else if (!numMeses && valorPrestacao && taxaJuros) {
-                // Calcular número de meses: n = log((PMT)/(PMT - PV*i)) / log(1 + i)
-                if (valorPrestacao - valorFinanciado * i <= 0) {
-                    alert('Não é possível calcular o número de meses com os valores informados. A prestação pode ser muito baixa para a taxa de juros e o valor financiado.');
+            // Case 2: Calculate interest rate (taxaJuros) when payment is known
+            else if (valorFinanciado > 0 && numMeses > 0 && valorPrestacao > 0) {
+                // Check if payment is too low to ever pay off the loan
+                if (valorPrestacao < valorFinanciado / numMeses) {
+                    alert('A prestação informada é muito baixa para o valor financiado e o número de meses. É impossível pagar o empréstimo com este valor.');
                     return;
                 }
+                
+                i = calculateInterestRate(valorFinanciado, numMeses, valorPrestacao);
+                
+                if (i !== null) {
+                    taxaJuros = i * 100;
+                    document.getElementById('taxaJuros').value = taxaJuros.toFixed(2);
+                    prestacaoFinal = valorPrestacao; // Use the provided prestacao for totals
+                } else {
+                    alert('Não foi possível encontrar uma taxa de juros mensal precisa para os valores informados.');
+                    return; // Stop execution if no rate is found
+                }
+            }
+            // Case 3: Calculate number of months (numMeses)
+            else if (valorFinanciado > 0 && valorPrestacao > 0 && taxaJuros > 0) {
+                if (valorPrestacao <= valorFinanciado * i) {
+                    alert('A prestação é muito baixa para a taxa de juros e o valor financiado. O saldo nunca será quitado.');
+                    return;
+                }
+                // n = log(PMT / (PMT - PV * i)) / log(1 + i)
                 const meses = Math.log(valorPrestacao / (valorPrestacao - valorFinanciado * i)) / Math.log(1 + i);
                 document.getElementById('numMeses').value = Math.round(meses);
-                prestacaoFinal = valorPrestacao; // Use the provided prestacao
+                prestacaoFinal = valorPrestacao; // Use the provided prestacao for totals
             }
-            else if (!taxaJuros && valorPrestacao && numMeses) {
-                 // Already handled the case where valorPrestacao is provided and taxaJuros is missing
-                 // This block will now only execute if valorPrestacao is provided and numMeses is also provided
-                 // But the primary check will be the first 'if' block.
-                 // This 'else if' block can effectively be removed or refactored.
-                 // For now, it remains, but the first 'if' block is more specific.
+            else {
+                alert('Por favor, preencha pelo menos 3 dos campos de financiamento (Valor Financiado, Nº de meses, Taxa de juros ou Valor da prestação) para calcular os dados restantes.');
+                return; // Stop if not enough data
             }
 
-            // Calculate annual interest rate from monthly rate
+            // --- CALCULATE TOTALS BASED ON FINAL VALUES ---
+            
             const taxaJurosAnual = (Math.pow(1 + i, 12) - 1) * 100;
             document.getElementById('taxaJurosAnual').value = taxaJurosAnual.toFixed(2);
-
-            // Calcular totais
+            
             const valorTotalFinanciamento = prestacaoFinal * numMeses;
             const valorTotalComEntrada = valorTotalFinanciamento + valorEntrada;
             const valorTotalJuros = valorTotalFinanciamento - valorFinanciado;
 
-            // Atualizar campos de totais
+            // Update total fields
             document.getElementById('valorTotalFinanciamento').value = formatMoney(valorTotalFinanciamento);
             document.getElementById('valorTotalComEntrada').value = formatMoney(valorTotalComEntrada);
             document.getElementById('valorTotalJuros').value = formatMoney(valorTotalJuros);
