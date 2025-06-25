@@ -143,7 +143,6 @@
                     low = mid;
                 }
             }
-
             return null; // Return null if no rate is found within tolerance
         }
 
@@ -159,14 +158,11 @@
             const valorFinanciado = valorTotal - valorEntrada;
             document.getElementById('valorFinanciado').value = formatMoney(valorFinanciado);
             
-            // Clear previous output fields
-            document.getElementById('valorPrestacao').value = '';
-            document.getElementById('taxaJuros').value = '';
-            document.getElementById('taxaJurosAnual').value = '';
+            // Clear only the TOTALS, not the input fields
             document.getElementById('valorTotalFinanciamento').value = '';
             document.getElementById('valorTotalComEntrada').value = '';
             document.getElementById('valorTotalJuros').value = '';
-
+            
             let i; // Monthly interest rate as a decimal
             let prestacaoFinal;
 
@@ -179,7 +175,7 @@
                 i = taxaJuros / 100;
                 
                 // PMT = PV * [i * (1 + i)^n] / [(1 + i)^n - 1]
-                prestacaoFinal = valorFinanciado * (i * Math.pow(1 + i, numMeses)) / (Math.pow(1 + i, numMeses) - 1);
+                prestacaoFinal = valorFinanciado * (i * Math.pow(1 + i, numMeses)) / (1 - Math.pow(1 + i, -numMeses));
                 document.getElementById('valorPrestacao').value = formatMoney(prestacaoFinal);
             }
             // Scenario 2: Calculate interest rate (taxaJuros)
@@ -188,7 +184,7 @@
                 const valorPrestacao = parseMoney(valorPrestacaoInput);
                 
                 // Check if the payment is too low to ever pay off the loan
-                if (valorPrestacao <= (valorFinanciado / numMeses)) {
+                if (valorPrestacao < (valorFinanciado / numMeses)) {
                     alert('A prestação informada é muito baixa para o valor financiado e o número de meses. O empréstimo não pode ser pago com este valor.');
                     return;
                 }
