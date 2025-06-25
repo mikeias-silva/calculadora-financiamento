@@ -43,12 +43,16 @@
                                     <input type="number" class="form-control" id="taxaJuros" step="0.01">
                                 </div>
                                 <div class="col-md-4">
-                                    <label for="valorPrestacao" class="form-label">Valor da prestação</label>
-                                    <input type="text" class="form-control money" id="valorPrestacao">
+                                    <label for="taxaJurosAnual" class="form-label">Taxa de juros anual (%)</label>
+                                    <input type="number" class="form-control" id="taxaJurosAnual" step="0.01" readonly>
                                 </div>
                             </div>
                             <div class="row mb-3">
-                                <div class="col-md-12">
+                                <div class="col-md-6">
+                                    <label for="valorPrestacao" class="form-label">Valor da prestação</label>
+                                    <input type="text" class="form-control money" id="valorPrestacao">
+                                </div>
+                                <div class="col-md-6">
                                     <label for="valorFinanciado" class="form-label">Valor Financiado</label>
                                     <input type="text" class="form-control money readonly-field" id="valorFinanciado" readonly>
                                 </div>
@@ -112,49 +116,81 @@
             const valorTotal = parseMoney(document.getElementById('valorTotal').value);
             const valorEntrada = parseMoney(document.getElementById('valorEntrada').value);
             const numMeses = parseFloat(document.getElementById('numMeses').value) || 0;
-            const taxaJuros = parseFloat(document.getElementById('taxaJuros').value) || 0;
-            const valorPrestacao = parseMoney(document.getElementById('valorPrestacao').value);
+            let taxaJuros = parseFloat(document.getElementById('taxaJuros').value) || 0;
+            const valorPrestacaoInput = document.getElementById('valorPrestacao').value;
+            let valorPrestacao = parseMoney(valorPrestacaoInput);
 
             const valorFinanciado = valorTotal - valorEntrada;
             document.getElementById('valorFinanciado').value = formatMoney(valorFinanciado);
 
             // Taxa de juros em decimal
-            const i = taxaJuros / 100;
+            let i = taxaJuros / 100;
 
             // Verificar qual campo está vazio e calculá-lo
             let prestacaoFinal = valorPrestacao;
 
-            if (!valorPrestacao && numMeses && taxaJuros) {
+            if (valorPrestacaoInput && valorPrestacao > 0 && numMeses > 0 && valorFinanciado > 0) {
+                // Se valor da prestação está preenchido, calcular taxa de juros mensal
+                let low = 0;
+                let high = 1; // Max 100% monthly
+                let iterations = 0;
+                const maxIterations = 1000;
+                const tolerance = 0.000001;
+
+                while (iterations < maxIterations) {
+                    i = (low + high) / 2;
+                    if (i === 0) { // Avoid division by zero if i becomes 0
+                        low = i;
+                        continue;
+                    }
+                    const pvFactor = (1 - Math.pow(1 + i, -numMeses)) / i;
+                    const calculatedPrestacao = valorFinanciado / pvFactor;
+
+                    if (Math.abs(calculatedPrestacao - valorPrestacao) < tolerance) {
+                        taxaJuros = i * 100;
+                        document.getElementById('taxaJuros').value = taxaJuros.toFixed(2);
+                        break;
+                    }
+
+                    if (calculatedPrestacao < valorPrestacao) {
+                        high = i;
+                    } else {
+                        low = i;
+                    }
+                    iterations++;
+                }
+
+                if (iterations === maxIterations) {
+                    alert('Não foi possível encontrar uma taxa de juros mensal precisa para os valores informados.');
+                }
+                prestacaoFinal = valorPrestacao; // Use the provided prestacao
+            }
+            else if (!valorPrestacaoInput && numMeses && taxaJuros) {
                 // Calcular prestação: PMT = PV * (i * (1 + i)^n) / ((1 + i)^n - 1)
                 prestacaoFinal = valorFinanciado * (i * Math.pow(1 + i, numMeses)) / (Math.pow(1 + i, numMeses) - 1);
                 document.getElementById('valorPrestacao').value = formatMoney(prestacaoFinal);
             }
             else if (!numMeses && valorPrestacao && taxaJuros) {
                 // Calcular número de meses: n = log((PMT)/(PMT - PV*i)) / log(1 + i)
+                if (valorPrestacao - valorFinanciado * i <= 0) {
+                    alert('Não é possível calcular o número de meses com os valores informados. A prestação pode ser muito baixa para a taxa de juros e o valor financiado.');
+                    return;
+                }
                 const meses = Math.log(valorPrestacao / (valorPrestacao - valorFinanciado * i)) / Math.log(1 + i);
                 document.getElementById('numMeses').value = Math.round(meses);
+                prestacaoFinal = valorPrestacao; // Use the provided prestacao
             }
             else if (!taxaJuros && valorPrestacao && numMeses) {
-                // Encontrar taxa de juros por tentativa e erro
-                let taxa = 0.01;
-                let prestacaoCalculada = 0;
-                let taxaEncontrada = false;
-
-                for (let j = 0.001; j <= 1; j += 0.001) {
-                    prestacaoCalculada = valorFinanciado * (j * Math.pow(1 + j, numMeses)) / (Math.pow(1 + j, numMeses) - 1);
-                    if (Math.abs(prestacaoCalculada - valorPrestacao) < 0.01) {
-                        taxa = j;
-                        taxaEncontrada = true;
-                        break;
-                    }
-                }
-
-                if (taxaEncontrada) {
-                    document.getElementById('taxaJuros').value = (taxa * 100).toFixed(2);
-                } else {
-                    alert('Não foi possível encontrar uma taxa de juros válida para os valores informados.');
-                }
+                 // Already handled the case where valorPrestacao is provided and taxaJuros is missing
+                 // This block will now only execute if valorPrestacao is provided and numMeses is also provided
+                 // But the primary check will be the first 'if' block.
+                 // This 'else if' block can effectively be removed or refactored.
+                 // For now, it remains, but the first 'if' block is more specific.
             }
+
+            // Calculate annual interest rate from monthly rate
+            const taxaJurosAnual = (Math.pow(1 + i, 12) - 1) * 100;
+            document.getElementById('taxaJurosAnual').value = taxaJurosAnual.toFixed(2);
 
             // Calcular totais
             const valorTotalFinanciamento = prestacaoFinal * numMeses;
