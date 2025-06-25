@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora Financeira</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .readonly-field {
+            background-color: #e9ecef !important;
+            opacity: 1 !important;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="text-center">Calculadora Financeira</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="calculadoraForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="valorTotal" class="form-label">Valor Total</label>
+                                    <input type="text" class="form-control money" id="valorTotal">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="valorEntrada" class="form-label">Valor de Entrada</label>
+                                    <input type="text" class="form-control money" id="valorEntrada">
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="numMeses" class="form-label">Nº de meses</label>
+                                    <input type="number" class="form-control" id="numMeses">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="taxaJuros" class="form-label">Taxa de juros mensal (%)</label>
+                                    <input type="number" class="form-control" id="taxaJuros" step="0.01">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="valorPrestacao" class="form-label">Valor da prestação</label>
+                                    <input type="text" class="form-control money" id="valorPrestacao">
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <label for="valorFinanciado" class="form-label">Valor Financiado</label>
+                                    <input type="text" class="form-control money readonly-field" id="valorFinanciado" readonly>
+                                </div>
+                            </div>
+                            <hr>
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="valorTotalFinanciamento" class="form-label">Total do Financiamento</label>
+                                    <input type="text" class="form-control money readonly-field" id="valorTotalFinanciamento" readonly>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="valorTotalComEntrada" class="form-label">Total com Entrada</label>
+                                    <input type="text" class="form-control money readonly-field" id="valorTotalComEntrada" readonly>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="valorTotalJuros" class="form-label">Total em Juros</label>
+                                    <input type="text" class="form-control money readonly-field" id="valorTotalJuros" readonly>
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="button" class="btn btn-primary" onclick="calcular()">Calcular</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/imask"></script>
+    <script>
+        // Aplicar máscara em todos os campos de dinheiro
+        document.querySelectorAll('.money').forEach(element => {
+            IMask(element, {
+                mask: 'R$ num',
+                blocks: {
+                    num: {
+                        mask: Number,
+                        thousandsSeparator: '.',
+                        radix: ',',
+                        scale: 2,
+                        padFractionalZeros: true,
+                        normalizeZeros: true,
+                        min: 0
+                    }
+                }
+            });
+        });
+
+        function parseMoney(value) {
+            if (!value) return 0;
+            return parseFloat(value.replace('R$ ', '').replace(/\./g, '').replace(',', '.'));
+        }
+
+        function formatMoney(value) {
+            return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function calcular() {
+            const valorTotal = parseMoney(document.getElementById('valorTotal').value);
+            const valorEntrada = parseMoney(document.getElementById('valorEntrada').value);
+            const numMeses = parseFloat(document.getElementById('numMeses').value) || 0;
+            const taxaJuros = parseFloat(document.getElementById('taxaJuros').value) || 0;
+            const valorPrestacao = parseMoney(document.getElementById('valorPrestacao').value);
+
+            const valorFinanciado = valorTotal - valorEntrada;
+            document.getElementById('valorFinanciado').value = formatMoney(valorFinanciado);
+
+            // Taxa de juros em decimal
+            const i = taxaJuros / 100;
+
+            // Verificar qual campo está vazio e calculá-lo
+            let prestacaoFinal = valorPrestacao;
+
+            if (!valorPrestacao && numMeses && taxaJuros) {
+                // Calcular prestação: PMT = PV * (i * (1 + i)^n) / ((1 + i)^n - 1)
+                prestacaoFinal = valorFinanciado * (i * Math.pow(1 + i, numMeses)) / (Math.pow(1 + i, numMeses) - 1);
+                document.getElementById('valorPrestacao').value = formatMoney(prestacaoFinal);
+            }
+            else if (!numMeses && valorPrestacao && taxaJuros) {
+                // Calcular número de meses: n = log((PMT)/(PMT - PV*i)) / log(1 + i)
+                const meses = Math.log(valorPrestacao / (valorPrestacao - valorFinanciado * i)) / Math.log(1 + i);
+                document.getElementById('numMeses').value = Math.round(meses);
+            }
+            else if (!taxaJuros && valorPrestacao && numMeses) {
+                // Encontrar taxa de juros por tentativa e erro
+                let taxa = 0.01;
+                let prestacaoCalculada = 0;
+                let taxaEncontrada = false;
+
+                for (let j = 0.001; j <= 1; j += 0.001) {
+                    prestacaoCalculada = valorFinanciado * (j * Math.pow(1 + j, numMeses)) / (Math.pow(1 + j, numMeses) - 1);
+                    if (Math.abs(prestacaoCalculada - valorPrestacao) < 0.01) {
+                        taxa = j;
+                        taxaEncontrada = true;
+                        break;
+                    }
+                }
+
+                if (taxaEncontrada) {
+                    document.getElementById('taxaJuros').value = (taxa * 100).toFixed(2);
+                } else {
+                    alert('Não foi possível encontrar uma taxa de juros válida para os valores informados.');
+                }
+            }
+
+            // Calcular totais
+            const valorTotalFinanciamento = prestacaoFinal * numMeses;
+            const valorTotalComEntrada = valorTotalFinanciamento + valorEntrada;
+            const valorTotalJuros = valorTotalFinanciamento - valorFinanciado;
+
+            // Atualizar campos de totais
+            document.getElementById('valorTotalFinanciamento').value = formatMoney(valorTotalFinanciamento);
+            document.getElementById('valorTotalComEntrada').value = formatMoney(valorTotalComEntrada);
+            document.getElementById('valorTotalJuros').value = formatMoney(valorTotalJuros);
+        }
+    </script>
+</body>
+</html>
